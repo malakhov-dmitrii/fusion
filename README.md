@@ -2,11 +2,13 @@
 
 **A multi-model consensus planner for coding agents.** Claude, Codex, and DeepSeek (or any models you reach through [opencode](https://opencode.ai) — GLM, Kimi, MiniMax…) each draft a plan **independently**, cross-verify one another ("idiot-test"), and **must reach consensus** before a single plan is emitted. The output is a plan — fusion never touches your code.
 
-> **Status: v0.1, experimental.** The harness (`fan` / `cross-verify` / `collect` / `cleanup`) is verified working across Claude, Codex, and opencode (incl. an opencode-only roster of GLM + Kimi + DeepSeek). The full `/fusion` cycle runs end-to-end. What is *not* yet proven: that the consensus plan beats a single strong model often enough to justify the cost — that takes a baseline A/B (see [`docs/`](docs/superpowers/specs)). Treat it as a sharp experiment, not a finished product.
+> **Status: v0.1, experimental.** The harness (`fan` / `cross-verify` / `collect` / `cleanup`) is verified working across Claude, Codex, and opencode (incl. an opencode-only roster of GLM + Kimi + DeepSeek), and the full `/fusion` cycle runs end-to-end. It's young — flags and ergonomics will change — but the core mechanism is the point, not a finished product.
 
 ## Why
 
 One frontier model has one set of blind spots. Three different model *families*, forced to debate and agree, cover for each other — the "fusion beats frontier" idea, applied to planning instead of answers. fusion makes the disagreement explicit and refuses to emit a plan until the models actually converge (or escalates the fork to you).
+
+This is not a marginal quality bump. A single agent routinely hallucinates specifics — a flag, an API, a cost number — believes its own fiction, and ships something that does not work. The cross-verify rotation and the hard consensus gate exist to catch exactly that. fusion's own design and plan (in [`docs/`](docs/superpowers/specs)) were built this way, and the process caught real errors a solo agent had already written down as fact: a fabricated cost figure, a transport that did not survive a spike, a "read-only writes" contradiction, a missing `.gitignore`. That gap — between a grounded plan and confident fiction — is the whole point.
 
 ## How it works
 
@@ -110,7 +112,7 @@ The harness is plain bash + CLI adapters, so the orchestrator host is interchang
 
 - **Plan-only.** fusion writes plans, never code. Hand the plan to an executor (e.g. `forge`, `improve execute`).
 - **Batch, not interactive.** A full run is multiple models × rounds — expect minutes, not seconds.
-- **ROI unproven.** It costs noticeably more than one model. Whether the consensus plan is *worth* that is the open question; run the baseline A/B in `docs/` before relying on it.
+- **Costs more than one model.** Several models × rounds — reach for it when being wrong is expensive (architecture, migrations, irreversible or hard-to-reverse calls), not for quick edits.
 - **Provider drift.** CLI flags and quotas change. Codex in particular has a usage quota and a strict `config.toml` (a bad `service_tier` will break `codex exec`).
 
 ## Internals & design
