@@ -1,95 +1,122 @@
 # fusion
 
-Многомодельный консенсус-планировщик. Claude, Codex и DeepSeek (или любые модели через opencode — GLM, Kimi, MiniMax…) **независимо** строят план, кросс-верифицируют друг друга («идиот-тест») и **обязаны прийти к консенсусу** по ключевым осям, прежде чем выдать план. Выход — план-документ; код fusion не трогает (реализация — отдельно, через forge/improve).
+**A multi-model consensus planner for coding agents.** Claude, Codex, and DeepSeek (or any models you reach through [opencode](https://opencode.ai) — GLM, Kimi, MiniMax…) each draft a plan **independently**, cross-verify one another ("idiot-test"), and **must reach consensus** before a single plan is emitted. The output is a plan — fusion never touches your code.
 
-Тезис («fusion beats frontier»): ансамбль разных семейств обгоняет одну топ-модель, потому что у них разные слепые зоны.
+> **Status: v0.1, experimental.** The harness (`fan` / `cross-verify` / `collect` / `cleanup`) is verified working across Claude, Codex, and opencode (incl. an opencode-only roster of GLM + Kimi + DeepSeek). The full `/fusion` cycle runs end-to-end. What is *not* yet proven: that the consensus plan beats a single strong model often enough to justify the cost — that takes a baseline A/B (see [`docs/`](docs/superpowers/specs)). Treat it as a sharp experiment, not a finished product.
 
-> Статус: **v0.1**. Труба (`fan`/`cross-verify`/`collect`/`cleanup`) проверена живьём; полный цикл `/fusion` через playbook собран, но прирост против одиночной модели ещё не доказан baseline-замером (см. `docs/.../v1-implementation-plan.md`). Plan-only, batch-инструмент (≥1 ч/задача), не интерактивный.
+## Why
 
-## Как устроено
+One frontier model has one set of blind spots. Three different model *families*, forced to debate and agree, cover for each other — the "fusion beats frontier" idea, applied to planning instead of answers. fusion makes the disagreement explicit and refuses to emit a plan until the models actually converge (or escalates the fork to you).
 
-- `skills/fusion/fusion.sh` — детерминированная труба (bash + CLI-адаптеры). **Host-agnostic:** все участники зовутся одинаково CLI-вызовами, поэтому оркестратором может быть Claude Code, Codex или opencode.
-- `skills/fusion/SKILL.md` — playbook цикла (draft → cross-verify → consensus-гейт → synthesize), который исполняет хост-модель.
-- Участник = `claude[:model] | codex | opencode:<model> | deepseek`.
+## How it works
 
-## Требования
+```
+brief (raw repo context, not a Claude summary)
+   │
+   ▼
+fan ──► claude   ┐
+        codex    │ each drafts a full plan, independently, challenging
+        deepseek ┘ "don't build it / simpler / depends on future / scenarios"
+   │
+   ▼
+cross-verify  (rotation — nobody grades themselves)
+   claude → codex's plan,  codex → deepseek's,  deepseek → claude's
+   each re-checks every claim INSTRUMENTALLY (grep/read/counter-example)
+   │
+   ▼
+consensus gate  (hard: all agree on material axes, no majority override)
+   split survives → spike the assumption → re-discuss → operator breaks the tie
+   │
+   ▼
+synthesize  → plan.md  (+ debate.md: who proposed what, how it resolved)
+```
 
-Нужны только CLI тех моделей, что в твоём ростере:
+Two invariants make it trustworthy:
+- **Hard consensus gate.** No plan is emitted until every available model agrees on the material axes (architecture, approach, key assumptions). A 2-of-3 majority never overrides a dissenter; an unresolved fork goes to you (`decision: operator_decision`), never silently averaged.
+- **Write isolation.** Planning is read-only. A git guard snapshots your repo before and after every fan; if a model mutates a tracked file, the run stops (`write_leak: true`).
 
-| Участник | CLI | Проверка |
+See a real run in [`examples/selftest-plan.md`](examples/selftest-plan.md).
+
+## Quickstart
+
+```bash
+git clone <this-repo> fusion && cd fusion
+./install.sh                 # detects Claude Code / Codex, links the skill
+# authenticate the providers in your roster (below), then:
+/fusion <task> --dir <path-to-your-repo>
+```
+
+## Installing with your coding agent
+
+Point your agent at this and it can install fusion itself:
+
+> Clone `<repo-url>`, run `./install.sh` from the repo root, then read `README.md` →
+> "Providers & auth" and make sure the CLIs for my chosen roster are authenticated.
+> Default roster is `claude codex deepseek`. Confirm `/fusion` is available and report back.
+
+## Requirements & providers
+
+You only need the CLIs for the models in your roster.
+
+| Participant | CLI | Auth | Smoke test |
+|---|---|---|---|
+| Claude | [`claude`](https://docs.claude.com/claude-code) | Claude Code login or `ANTHROPIC_API_KEY` | `claude -p "say OK"` |
+| Codex / GPT | [`codex`](https://developers.openai.com/codex/cli) | `codex login` (ChatGPT) or `OPENAI_API_KEY` | `codex exec "say OK"` |
+| GLM / Kimi / DeepSeek / MiniMax… | [`opencode`](https://opencode.ai) | `opencode auth login` (OpenCode Go / OpenRouter) | `opencode run -m opencode-go/glm-5 "say OK"` |
+
+`git`, `bash`, `shasum` are assumed. If a participant's CLI is missing or unauthenticated, fusion drops it and runs `degraded` (and labels the output as such — it won't pretend two models are three).
+
+## Models & rosters
+
+Everything is configured by environment variables — no config files:
+
+| Var | Meaning | Default |
 |---|---|---|
-| Claude | [`claude`](https://docs.claude.com/claude-code) | `claude -p "OK"` → `OK` |
-| Codex | [`codex`](https://developers.openai.com/codex/cli) | `codex exec --sandbox read-only "say OK"` |
-| GLM/Kimi/DeepSeek/… | [`opencode`](https://opencode.ai) | `opencode run -m opencode-go/glm-5 "say OK"` |
+| `FUSION_ROSTER` | participant list | `claude codex deepseek` |
+| `FUSION_MODEL_DEEPSEEK` | model for the `deepseek` alias | `opencode-go/deepseek-v4-pro` |
+| `FUSION_MODEL_CLAUDE` | `--model` for `claude` | CLI default |
+| `FUSION_TIMEOUT` | per-call timeout (s) | `300` |
+| `FUSION_GUARD_REPO` | repo the write-guard watches | `$PWD` |
+| `FUSION_SCRATCH` | scratch dir for model writes | `/tmp/fusion-scratch` |
 
-`git`, `bash`, `shasum` — стандартные.
+A participant is `claude[:model]` · `codex` · `opencode:<model>` · `deepseek` (alias). So you can run a **fully opencode-only** ensemble of three different families:
 
-## Настройка токенов (per provider)
-
-Fusion не хранит ключи — использует логин самих CLI:
-
-- **Claude:** `claude` использует логин Claude Code (подписка/`ANTHROPIC_API_KEY`). Проверка: `claude -p "OK"`.
-- **Codex:** `codex login` (ChatGPT-аккаунт) или `OPENAI_API_KEY`. Проверка: `codex exec "say OK"`. ⚠️ ChatGPT-план имеет квоту — при исчерпании участник выбывает в `degraded`.
-- **opencode** (GLM/Kimi/DeepSeek/MiniMax): `opencode auth login` → провайдер (OpenCode Go / OpenRouter). Список моделей: `opencode models`. Проверка: `opencode run -m opencode-go/deepseek-v4-pro "say OK"`.
-
-## Настройка моделей (env)
-
-| Переменная | Что | Дефолт |
-|---|---|---|
-| `FUSION_ROSTER` | список участников | `claude codex deepseek` |
-| `FUSION_MODEL_DEEPSEEK` | модель для алиаса `deepseek` | `opencode-go/deepseek-v4-pro` |
-| `FUSION_MODEL_CLAUDE` | модель для `claude` (`--model`) | (дефолт CLI) |
-| `FUSION_TIMEOUT` | таймаут на вызов, сек | `300` |
-| `FUSION_GUARD_REPO` | репо, чьи изменения стережёт write-guard | `$PWD` |
-| `FUSION_SCRATCH` | scratch для записей моделей | `/tmp/fusion-scratch` |
-
-**Ростеры:**
 ```bash
-FUSION_ROSTER="claude codex deepseek"                                                   # mixed (default)
-FUSION_ROSTER="opencode:opencode-go/glm-5 opencode:opencode-go/kimi-k2.7-code opencode:opencode-go/deepseek-v4-pro"  # opencode-only
+export FUSION_ROSTER="opencode:opencode-go/glm-5 opencode:opencode-go/kimi-k2.7-code opencode:opencode-go/deepseek-v4-pro"
 ```
 
-## Установка (per host)
-
-Скилл — это папка `skills/fusion/` в формате [Agent Skills](https://agentskills.io). Поставь её туда, где хост ищет скиллы:
-
-**Claude Code:**
-```bash
-ln -s "$PWD/skills/fusion" ~/.claude/skills/fusion      # затем /fusion в сессии
-# или как плагин: добавить репозиторий через plugin-маркетплейс
-```
-
-**Codex:**
-```bash
-ln -s "$PWD/skills/fusion" ~/.codex/skills/fusion       # Codex читает ~/.codex/skills/<name>/SKILL.md
-```
-
-**opencode (как оркестратор):**
-opencode исполняет тот же `SKILL.md` как инструкцию (`opencode run "follow skills/fusion/SKILL.md for: <task>"`). Менее стандартно, но труба та же.
-
-> Операторское интервью на развилке: в Claude Code — `AskUserQuestion`; в Codex/opencode — обычный вопрос текстом. Это единственное место, зависящее от хоста.
-
-## Использование
+## Usage
 
 ```
 /fusion <task> --dir <target-repo> [--depth lite|full]
 ```
 
-Хост следует `SKILL.md`: собирает сырой бриф → `fan` (все участники параллельно, write-guard) → `cross-verify` (ротация) → консенсус-гейт по structured-votes → `synthesize`. Артефакты — в `<target>/.fusion/runs/<ts>/` (`*-plan.md` + `*-debate.md`).
+Or drive the harness directly (no host needed):
 
-Прямой вызов трубы (без хоста):
 ```bash
-bash skills/fusion/fusion.sh fan draft prompt.txt .fusion/runs/r1 claude codex deepseek
-bash skills/fusion/fusion.sh cross-verify codex .fusion/runs/r1/draft/codex.md .fusion/runs/r1
-bash skills/fusion/fusion.sh collect .fusion/runs/r1
+bash skills/fusion/fusion.sh fan draft prompt.txt runs/r1 claude codex deepseek
+bash skills/fusion/fusion.sh cross-verify codex runs/r1/draft/codex.md runs/r1
+bash skills/fusion/fusion.sh collect runs/r1
+bash skills/fusion/fusion.sh --help
 ```
 
-## Инварианты
+Artifacts land in `<target-repo>/.fusion/runs/<timestamp>/`: a `*-plan.md` (the consensus plan, with ranked assumptions and explicit operator-unknowns) and a `*-debate.md` (the trail).
 
-- **Жёсткий консенсус-гейт:** план не эмитится, пока все доступные участники не согласны по material-осям. Большинство не перебивает несогласного; тай разбивает оператор (`decision: operator_decision ≠ consensus`).
-- **Write-изоляция:** `fan` стережёт target-репо (`git status` до/после); мутация → `write_leak:true`, стоп.
-- **`<2` семейств → `degraded`,** не выдаётся за fusion.
+## Works in Claude Code and Codex
 
-## Не делает
+The harness is plain bash + CLI adapters, so the orchestrator host is interchangeable. `install.sh` links the skill into `~/.claude/skills/` (Claude Code, invoked as `/fusion`) and/or `~/.codex/skills/` (Codex reads `SKILL.md`). The only host-specific step is the operator interview — `AskUserQuestion` in Claude Code, a plain text question elsewhere.
 
-Не исполняет код (кроме спайков) · не правит репо · не роутит на одну модель · не хранит секреты. Полный список ограничений и дизайн — в `docs/superpowers/specs/`.
+## Limitations (read these)
+
+- **Plan-only.** fusion writes plans, never code. Hand the plan to an executor (e.g. `forge`, `improve execute`).
+- **Batch, not interactive.** A full run is multiple models × rounds — expect minutes, not seconds.
+- **ROI unproven.** It costs noticeably more than one model. Whether the consensus plan is *worth* that is the open question; run the baseline A/B in `docs/` before relying on it.
+- **Provider drift.** CLI flags and quotas change. Codex in particular has a usage quota and a strict `config.toml` (a bad `service_tier` will break `codex exec`).
+
+## Internals & design
+
+The full design, the decision log, and the implementation plan (themselves produced and reviewed *through fusion*) live in [`docs/superpowers/specs/`](docs/superpowers/specs).
+
+## License
+
+MIT © Dmitrii Malakhov
