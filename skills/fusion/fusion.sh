@@ -103,6 +103,65 @@ cmd_cleanup() {
   echo "cleanup done"
 }
 
+# spike <hypothesis> <dir> [participant]  — test an assumption in a throwaway git worktree
+# (write-enabled but isolated; the worktree is always removed). Prints a VERDICT line.
+cmd_spike() {
+  local hyp="$1" dir="$2" participant="${3:-deepseek}"
+  mkdir -p "$dir/spikes"
+  local slug; slug="$(printf '%s' "$hyp" | tr -c 'a-zA-Z0-9' '_' | cut -c1-48)"
+  local out="$dir/spikes/$slug.md" repo wt rc
+  repo="$(git -C "${FUSION_GUARD_REPO:-$PWD}" rev-parse --show-toplevel 2>/dev/null || true)"
+  wt="$(mktemp -d "${TMPDIR:-/tmp}/fusion-spike-XXXXXX")"
+  [ -n "$repo" ] && git -C "$repo" worktree add --detach -q "$wt" HEAD 2>/dev/null || true
+  local prompt="Проверь гипотезу ИНСТРУМЕНТАЛЬНО в этой изолированной рабочей копии (можно создавать throwaway-код, запускать команды). Гипотеза: $hyp. Последняя строка ровно: VERDICT: confirmed|refuted|inconclusive — <evidence>."
+  local kind="${participant%%:*}" model=""; [ "$participant" != "$kind" ] && model="${participant#*:}"
+  ( cd "$wt" || exit 97
+    case "$kind" in
+      claude)      timeout "$TIMEOUT" claude -p ${model:+--model "$model"} "$prompt" ;;
+      codex)       timeout "$TIMEOUT" codex exec --sandbox workspace-write "$prompt" ;;
+      deepseek)    timeout "$TIMEOUT" opencode run -m "${FUSION_MODEL_DEEPSEEK:-opencode-go/deepseek-v4-pro}" "$prompt" ;;
+      opencode|oc) timeout "$TIMEOUT" opencode run -m "$model" "$prompt" ;;
+      *) echo "spike: unknown participant $participant" >&2; exit 99 ;;
+    esac
+  ) >"$out" 2>"$dir/spikes/$slug.err"; rc=$?
+  echo "$rc" >"$dir/spikes/$slug.exit"
+  [ -n "$repo" ] && git -C "$repo" worktree remove --force "$wt" 2>/dev/null || true
+  rm -rf "$wt"
+  grep -E '^VERDICT:' "$out" 2>/dev/null || echo "VERDICT: inconclusive — no verdict line (exit $rc)"
+}
+
+# selftest [participant]  — cleanup + a trivial fan smoke; prints PASS/FAIL, exit 0 on PASS
+cmd_selftest() {
+  local participant="${1:-codex}" dir
+  dir="$(mktemp -d "${TMPDIR:-/tmp}/fusion-selftest-XXXXXX")"
+  cmd_cleanup >/dev/null 2>&1 || true
+  printf 'Reply with exactly: OK\n' >"$dir/p.txt"
+  cmd_fan selftest "$dir/p.txt" "$dir" "$participant" >/dev/null 2>&1 || true
+  local slug ex bytes; slug="$(_slug "$participant")"
+  ex="$(cat "$dir/selftest/$slug.exit" 2>/dev/null || echo 99)"
+  bytes="$(wc -c <"$dir/selftest/$slug.md" 2>/dev/null || echo 0)"
+  rm -rf "$dir"
+  if [ "$ex" = 0 ] && [ "${bytes:-0}" -gt 0 ]; then
+    echo "PASS — $participant: exit 0, ${bytes} bytes"; return 0
+  fi
+  echo "FAIL — $participant: exit $ex, ${bytes} bytes"; return 1
+}
+
+_usage() {
+  cat <<'USAGE'
+fusion.sh — minimal multi-model fan-out harness
+
+  fan <role> <promptfile> <dir> <participant...>   run participants in parallel (write-guarded)
+  cross-verify <verifier> <target-plan> <dir>      idiot-test one plan
+  spike <hypothesis> <dir> [participant]           test an assumption in a throwaway worktree
+  collect <dir>                                    concat run artifacts into aggregate.md
+  selftest [participant]                           smoke the harness; PASS/FAIL
+  cleanup                                          remove orphan worktrees + scratch
+
+  participant = claude[:model] | codex | opencode:<model> | deepseek
+USAGE
+}
+
 # _status <dir> <role> <leak> <participant...>
 _status() {
   local dir="$1" role="$2" leak="${3:-false}"; shift 3
@@ -126,10 +185,12 @@ main() {
     _run)         _run "$@" ;;
     fan)          cmd_fan "$@" ;;
     cross-verify) cmd_cross_verify "$@" ;;
+    spike)        cmd_spike "$@" ;;
     collect)      cmd_collect "$@" ;;
+    selftest)     cmd_selftest "$@" ;;
     cleanup)      cmd_cleanup "$@" ;;
-    *) echo "usage: fusion.sh {fan <role> <promptfile> <dir> <participant...>|cross-verify <verifier> <target> <dir>|collect <dir>|cleanup}" >&2
-       echo "participant = claude[:model] | codex | opencode:<model> | deepseek" >&2; exit 1 ;;
+    help|-h|--help) _usage ;;
+    *) _usage >&2; exit 1 ;;
   esac
 }
 main "$@"
