@@ -1,0 +1,9 @@
+{
+  "name": "fusion",
+  "description": "Multi-model consensus planner. Claude + Codex + DeepSeek independently draft a plan, cross-verify each other, and must reach consensus before any plan is emitted. Output is a plan; it never edits your code.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Dmitrii Malakhov"
+  },
+  "keywords": ["planning", "multi-model", "consensus", "agents", "fusion"]
+}
