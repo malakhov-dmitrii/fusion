@@ -21,7 +21,11 @@ fi
 if [ -d "$HOME/.codex" ] || command -v codex >/dev/null 2>&1; then
   link "$HOME/.codex/skills" "Codex" "→ Codex reads ~/.codex/skills/fusion/SKILL.md"; installed=1
 fi
-[ "$installed" -eq 1 ] || { echo "  ! No Claude Code or Codex found. Install one, then re-run."; exit 1; }
+if [ "$installed" -eq 0 ]; then
+  echo "  ! No Claude Code or Codex host detected — skill not linked."
+  echo "    You can still drive the harness directly:  bash skills/fusion/fusion.sh --help"
+  echo "    (e.g. an opencode-only roster needs no host skill dir.)"
+fi
 
 echo
 echo "Model CLIs (install only the ones in your roster):"

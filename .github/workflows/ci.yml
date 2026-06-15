@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax (bash -n)
+        run: |
+          bash -n skills/fusion/fusion.sh
+          bash -n install.sh
+
+      - name: ShellCheck (errors)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck -S error skills/fusion/fusion.sh install.sh
+
+      - name: Usage smoke
+        run: bash skills/fusion/fusion.sh --help | grep -q 'fan <role>'
+
+      - name: install.sh is idempotent
+        run: |
+          mkdir -p "$HOME/.claude"   # simulate a host so the linker has a target
+          ./install.sh
+          ./install.sh               # second run must also succeed
+          test -L "$HOME/.claude/skills/fusion"

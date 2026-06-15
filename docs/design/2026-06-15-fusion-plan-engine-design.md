@@ -112,7 +112,7 @@ Claude зовёт `AskUserQuestion` когда: спор о принципиал
   skills/fusion/
     SKILL.md                 playbook цикла, парсинг /fusion <task> [--depth lite|full]
     fusion.sh                fan <model> | cross-verify | spike (worktree+контракт) | cleanup --all | collect
-  docs/superpowers/specs/    этот документ
+  docs/design/                этот документ
 ```
 
 Выход запуска: `…-plan.md` (консенсусный план) + `…-debate.md` (транскрипт: варианты, кросс-верификация, как сошлись/где блокнулись).

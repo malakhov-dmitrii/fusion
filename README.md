@@ -8,7 +8,7 @@
 
 One frontier model has one set of blind spots. Three different model *families*, forced to debate and agree, cover for each other — the "fusion beats frontier" idea, applied to planning instead of answers. fusion makes the disagreement explicit and refuses to emit a plan until the models actually converge (or escalates the fork to you).
 
-This is not a marginal quality bump. A single agent routinely hallucinates specifics — a flag, an API, a cost number — believes its own fiction, and ships something that does not work. The cross-verify rotation and the hard consensus gate exist to catch exactly that. fusion's own design and plan (in [`docs/`](docs/superpowers/specs)) were built this way, and the process caught real errors a solo agent had already written down as fact: a fabricated cost figure, a transport that did not survive a spike, a "read-only writes" contradiction, a missing `.gitignore`. That gap — between a grounded plan and confident fiction — is the whole point.
+This is not a marginal quality bump. A single agent routinely hallucinates specifics — a flag, an API, a cost number — believes its own fiction, and ships something that does not work. The cross-verify rotation and the hard consensus gate exist to catch exactly that. fusion's own design and plan (in [`docs/`](docs/design)) were built this way, and the process caught real errors a solo agent had already written down as fact: a fabricated cost figure, a transport that did not survive a spike, a "read-only writes" contradiction, a missing `.gitignore`. That gap — between a grounded plan and confident fiction — is the whole point.
 
 ## How it works
 
@@ -81,6 +81,8 @@ Everything is configured by environment variables — no config files:
 | `FUSION_GUARD_REPO` | repo the write-guard watches | `$PWD` |
 | `FUSION_SCRATCH` | scratch dir for model writes | `/tmp/fusion-scratch` |
 
+Set these in your shell profile (`~/.zshrc` / `~/.bashrc`) for a default roster, or prefix one run: `FUSION_ROSTER="…" /fusion …`.
+
 A participant is `claude[:model]` · `codex` · `opencode:<model>` · `deepseek` (alias). So you can run a **fully opencode-only** ensemble of three different families:
 
 ```bash
@@ -108,6 +110,8 @@ Artifacts land in `<target-repo>/.fusion/runs/<timestamp>/`: a `*-plan.md` (the 
 
 The harness is plain bash + CLI adapters, so the orchestrator host is interchangeable. `install.sh` links the skill into `~/.claude/skills/` (Claude Code, invoked as `/fusion`) and/or `~/.codex/skills/` (Codex reads `SKILL.md`). The only host-specific step is the operator interview — `AskUserQuestion` in Claude Code, a plain text question elsewhere.
 
+Claude Code can also load the repo as a plugin (the `.claude-plugin/plugin.json` manifest) via a plugin marketplace; the `install.sh` symlink is just the simplest path.
+
 ## Limitations (read these)
 
 - **Plan-only.** fusion writes plans, never code. Hand the plan to an executor (e.g. `forge`, `improve execute`).
@@ -117,7 +121,7 @@ The harness is plain bash + CLI adapters, so the orchestrator host is interchang
 
 ## Internals & design
 
-The full design, the decision log, and the implementation plan (themselves produced and reviewed *through fusion*) live in [`docs/superpowers/specs/`](docs/superpowers/specs).
+The full design, the decision log, and the implementation plan (themselves produced and reviewed *through fusion*) live in [`docs/design/`](docs/design).
 
 ## License
 
