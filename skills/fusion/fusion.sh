@@ -7,6 +7,9 @@
 #   codex                   -> codex exec --sandbox read-only   (model via ~/.codex/config.toml)
 #   opencode:<model>        -> opencode run -m <model>          (deepseek-v4-pro, opencode-go/glm-5, .../kimi-k2.7-code, ...)
 #   deepseek                -> alias for opencode:$FUSION_MODEL_DEEPSEEK
+# opencode participants run under the read-only `plan` agent (FUSION_OPENCODE_AGENT),
+# NOT the default `build` agent — a build agent has skill/subagent/write access and
+# will re-invoke the `fusion` skill from inside a participant, causing recursion.
 # Rosters are just participant lists, e.g.:
 #   mixed:        claude codex deepseek
 #   opencode-only: opencode:opencode-go/glm-5 opencode:opencode-go/kimi-k2.7-code opencode:opencode-go/deepseek-v4-pro
@@ -27,11 +30,11 @@ _run() {
   case "$kind" in
     claude)   claude -p ${model:+--model "$model"} "$(cat "$pfile")" ;;
     codex)    codex exec --sandbox read-only "$(cat "$pfile")" ;;
-    deepseek) opencode run --pure --dir "$SCRATCH" \
+    deepseek) opencode run --pure --agent "${FUSION_OPENCODE_AGENT:-plan}" --dir "$SCRATCH" \
                 -m "${FUSION_MODEL_DEEPSEEK:-opencode-go/deepseek-v4-pro}" "$(cat "$pfile")" ;;
     opencode|oc)
               [ -n "$model" ] || { echo "opencode participant needs a model: opencode:<model>" >&2; return 98; }
-              opencode run --pure --dir "$SCRATCH" -m "$model" "$(cat "$pfile")" ;;
+              opencode run --pure --agent "${FUSION_OPENCODE_AGENT:-plan}" --dir "$SCRATCH" -m "$model" "$(cat "$pfile")" ;;
     *) echo "unknown participant kind: $kind" >&2; return 99 ;;
   esac
 }

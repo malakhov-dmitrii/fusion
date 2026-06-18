@@ -26,6 +26,7 @@ A non-trivial task that needs a hardened plan with real alternatives and checked
 - mixed (default): `claude codex deepseek`
 - opencode-only: `opencode:opencode-go/glm-5 opencode:opencode-go/kimi-k2.7-code opencode:opencode-go/deepseek-v4-pro`
 - participant = `claude[:model] | codex | opencode:<model> | deepseek`. Cross-verify rotation = cyclic shift of the roster (i verifies i+1).
+- opencode/deepseek participants run under the read-only `plan` agent (`$FUSION_OPENCODE_AGENT`, default `plan`) so they **draft** instead of acting — the default `build` agent has skill/subagent/write access and re-invokes the `fusion` skill from inside a participant, causing recursion.
 
 ## Playbook
 
